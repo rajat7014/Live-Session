@@ -19,8 +19,7 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "uuid": "^13.0.0",
-    "video.js": "^8.23.4",
-    "videojs-seek-buttons": "^3.0.1"
+    "video.js": "^8.23.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
