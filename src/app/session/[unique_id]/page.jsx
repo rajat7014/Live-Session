@@ -240,7 +240,9 @@ export default function StudentSessionPage(props) {
   useEffect(() => {
     const fetchSession = async () => {
       try {
-        const res = await axios.get(`/api/get-session/${unique_id}`)
+        const origin =
+          typeof window !== 'undefined' ? window.location.origin : ''
+        const res = await axios.get(`${origin}/api/get-session/${unique_id}`)
         if (res.data.success) setSession(res.data.session)
         else setNotFound(true)
       } catch {
@@ -276,7 +278,9 @@ export default function StudentSessionPage(props) {
             type: 'video',
             sources: [
               {
-                src: '/sample1.mp4',
+                src: `${
+                  typeof window !== 'undefined' ? window.location.origin : ''
+                }/sample1.mp4`,
                 type: 'video/mp4',
               },
             ],
