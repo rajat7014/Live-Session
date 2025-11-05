@@ -10,6 +10,9 @@ export default function StartSessionPage() {
     setSession(res.data.session)
   }
 
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  const sessionUrl = session ? `${origin}/session/${session.unique_id}` : ''
+
   return (
     <div className='p-10 text-center h-screen w-full flex items-center justify-center'>
       {!session ? (
@@ -24,12 +27,13 @@ export default function StartSessionPage() {
           <h2 className='text-2xl font-bold mb-3'>✅ Session Started</h2>
 
           <p className='mb-2'>Share this link with student:</p>
+
           <a
-            href={session.userurl}
+            href={sessionUrl}
             target='_blank'
-            className='text-blue-500 underline'
+            className='text-blue-500 underline break-all'
           >
-            {session.userurl}
+            {sessionUrl}
           </a>
 
           <video
