@@ -207,6 +207,7 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import React from 'react'
+import axios from 'axios'
 import { io } from 'socket.io-client'
 
 export default function LiveSession(props) {
@@ -216,6 +217,8 @@ export default function LiveSession(props) {
   const [notFound, setNotFound] = useState(false)
   const videoRef = useRef(null)
   const socketRef = useRef(null)
+  const pcRef = useRef(null)
+
   useEffect(() => {
     const fetchSession = async () => {
       try {
@@ -224,50 +227,58 @@ export default function LiveSession(props) {
         const res = await axios.get(`${origin}/api/get-session/${unique_id}`)
         if (res.data.success) setSession(res.data.session)
         else setNotFound(true)
-      } catch {
+      } catch (err) {
+        console.error('Session fetch error:', err)
         setNotFound(true)
       }
     }
     fetchSession()
   }, [unique_id])
+
   useEffect(() => {
-    // Connect to Socket.IO backend
-    socketRef.current = io('https://live-session-2.onrender.com/')
+    if (!session) return
 
-    navigator.mediaDevices
-      .getUserMedia({ video: true, audio: false })
-      .then((stream) => {
-        videoRef.current.srcObject = stream
-        videoRef.current.play()
+    // ✅ Connect to same Socket.IO backend
+    const socket = io('https://live-session-2.onrender.com')
+    socketRef.current = socket
 
-        const videoTrack = stream.getVideoTracks()[0]
-        const imageCapture = new ImageCapture(videoTrack)
+    const pc = new RTCPeerConnection()
+    pcRef.current = pc
 
-        const sendFrame = async () => {
-          const bitmap = await imageCapture.grabFrame()
-          const canvas = document.createElement('canvas')
-          canvas.width = bitmap.width
-          canvas.height = bitmap.height
-          const ctx = canvas.getContext('2d')
-          ctx.drawImage(bitmap, 0, 0)
-          const data = canvas.toDataURL('image/jpeg')
-          socketRef.current.emit('video-stream', data)
-          requestAnimationFrame(sendFrame)
-        }
-        sendFrame()
-      })
+    // ✅ When admin's video arrives
+    pc.ontrack = (event) => {
+      videoRef.current.srcObject = event.streams[0]
+    }
 
-    socketRef.current.on('video-stream', (data) => {
-      const img = new Image()
-      img.src = data
-      img.onload = () => {
-        const ctx = videoRef.current.getContext('2d')
-        ctx.drawImage(img, 0, 0)
-      }
+    // ✅ Handle offer from admin
+    socket.on('offer', async (offer) => {
+      await pc.setRemoteDescription(new RTCSessionDescription(offer))
+      const answer = await pc.createAnswer()
+      await pc.setLocalDescription(answer)
+      socket.emit('answer', answer)
     })
 
-    return () => socketRef.current.disconnect()
-  }, [])
+    // ✅ Handle ICE candidates
+    socket.on('candidate', async (candidate) => {
+      if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate))
+    })
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) socket.emit('candidate', event.candidate)
+    }
+
+    return () => {
+      socket.disconnect()
+      pc.close()
+    }
+  }, [session])
+
+  if (notFound)
+    return (
+      <div className='text-center text-red-500 mt-10'>Session not found.</div>
+    )
+
+  if (!session) return <h2 className='text-center mt-20 text-xl'>Loading...</h2>
 
   return (
     <div className='p-10 text-center'>
@@ -276,7 +287,7 @@ export default function LiveSession(props) {
         ref={videoRef}
         autoPlay
         playsInline
-        className='w-[70%] mx-auto border rounded-lg'
+        className='w-[70%] mx-auto border rounded-lg shadow-lg'
       />
     </div>
   )

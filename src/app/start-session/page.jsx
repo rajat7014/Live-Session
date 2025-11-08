@@ -95,40 +95,66 @@ import { io } from 'socket.io-client'
 export default function StartSessionPage() {
   const [session, setSession] = useState(null)
   const videoRef = useRef(null)
+  const socketRef = useRef(null)
+  const pcRef = useRef(null)
 
   const handleStartSession = async () => {
-    const res = await axios.post('/api/create-session')
-    setSession(res.data.session)
+    try {
+      const res = await axios.post('/api/create-session')
+      setSession(res.data.session)
+    } catch (error) {
+      console.error('❌ Error creating session:', error)
+    }
   }
 
   useEffect(() => {
     if (!session) return
-    const socket = io()
 
+    // ✅ Connect to Socket.IO backend
+    const socket = io('https://live-session-2.onrender.com')
+    socketRef.current = socket
+
+    // ✅ Create PeerConnection
     const pc = new RTCPeerConnection()
+    pcRef.current = pc
+
+    // ✅ Access webcam & mic
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: true })
       .then((stream) => {
         videoRef.current.srcObject = stream
         stream.getTracks().forEach((track) => pc.addTrack(track, stream))
       })
+      .catch((err) => console.error('Camera access error:', err))
 
+    // ✅ When ICE candidate is found
     pc.onicecandidate = (event) => {
       if (event.candidate) socket.emit('candidate', event.candidate)
     }
 
+    // ✅ When student sends back answer
     socket.on('answer', async (answer) => {
       await pc.setRemoteDescription(new RTCSessionDescription(answer))
     })
 
+    // ✅ When student sends ICE candidate
     socket.on('candidate', async (candidate) => {
-      await pc.addIceCandidate(new RTCIceCandidate(candidate))
+      if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate))
     })
 
-    pc.createOffer().then(async (offer) => {
+    // ✅ Create and send offer
+    const createAndSendOffer = async () => {
+      const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
       socket.emit('offer', offer)
-    })
+    }
+
+    createAndSendOffer()
+
+    return () => {
+      socket.disconnect()
+      pc.close()
+    }
   }, [session])
 
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
@@ -139,18 +165,16 @@ export default function StartSessionPage() {
       {!session ? (
         <button
           onClick={handleStartSession}
-          className='px-6 py-3 bg-blue-600 text-white text-lg rounded cursor-pointer  hover:bg-blue-700 transition-all '
+          className='px-6 py-3 bg-blue-600 text-white text-lg rounded cursor-pointer hover:bg-blue-700 transition-all'
         >
           START SESSION
         </button>
       ) : (
         <div>
-          <h2 className='text-2xl font-bold mb-3 '>✅ Session Started</h2>
+          <h2 className='text-2xl font-bold mb-3'>✅ Session Started</h2>
           <p className='mt-2 text-gray-200'>
             Share this link with the student:
           </p>
-
-          {/* ✅ Link opens in a new tab */}
           <a
             href={sessionUrl}
             target='_blank'
@@ -159,7 +183,6 @@ export default function StartSessionPage() {
           >
             {sessionUrl}
           </a>
-
           <video
             ref={videoRef}
             autoPlay

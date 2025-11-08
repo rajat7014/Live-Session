@@ -1,4 +1,3 @@
-// server.js
 import next from 'next'
 import { createServer } from 'http'
 import { Server } from 'socket.io'
@@ -9,18 +8,33 @@ const handle = app.getRequestHandler()
 
 app.prepare().then(() => {
   const server = createServer((req, res) => handle(req, res))
-  const io = new Server(server, { cors: { origin: '*' } })
+
+  const io = new Server(server, {
+    cors: {
+      origin: '*',
+    },
+  })
 
   io.on('connection', (socket) => {
     console.log('🟢 New client connected')
 
-    socket.on('offer', (offer) => socket.broadcast.emit('offer', offer))
-    socket.on('answer', (answer) => socket.broadcast.emit('answer', answer))
-    socket.on('candidate', (candidate) =>
-      socket.broadcast.emit('candidate', candidate)
-    )
+    socket.on('offer', (offer) => {
+      console.log('📡 Offer received from admin')
+      socket.broadcast.emit('offer', offer)
+    })
 
-    socket.on('disconnect', () => console.log('🔴 Client disconnected'))
+    socket.on('answer', (answer) => {
+      console.log('✅ Answer received from student')
+      socket.broadcast.emit('answer', answer)
+    })
+
+    socket.on('candidate', (candidate) => {
+      socket.broadcast.emit('candidate', candidate)
+    })
+
+    socket.on('disconnect', () => {
+      console.log('🔴 Client disconnected')
+    })
   })
 
   const port = process.env.PORT || 1000
