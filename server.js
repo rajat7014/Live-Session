@@ -23,7 +23,7 @@ app.prepare().then(() => {
     socket.on('disconnect', () => console.log('🔴 Client disconnected'))
   })
 
-  const port = 1000
+  const port = process.env.PORT || 1000
   server.listen(port, () =>
     console.log(`✅ Server running on http://localhost:${port}`)
   )
