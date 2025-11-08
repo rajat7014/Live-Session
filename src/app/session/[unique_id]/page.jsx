@@ -203,82 +203,74 @@
 //     </div>
 //   )
 // }
-
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import React from 'react'
-import axios from 'axios'
 import { io } from 'socket.io-client'
+import { use } from 'react'
 
-export default function LiveSession(props) {
-  const params = React.use(props.params)
+export default function StudentSessionPage(props) {
+  // Unwrap params Promise
+  const params = use(props.params)
   const { unique_id } = params
-  const [session, setSession] = useState(null)
-  const [notFound, setNotFound] = useState(false)
+
   const videoRef = useRef(null)
-  const socketRef = useRef(null)
   const pcRef = useRef(null)
+  const socketRef = useRef(null)
 
   useEffect(() => {
-    const fetchSession = async () => {
-      try {
-        const origin =
-          typeof window !== 'undefined' ? window.location.origin : ''
-        const res = await axios.get(`${origin}/api/get-session/${unique_id}`)
-        if (res.data.success) setSession(res.data.session)
-        else setNotFound(true)
-      } catch (err) {
-        console.error('Session fetch error:', err)
-        setNotFound(true)
-      }
-    }
-    fetchSession()
-  }, [unique_id])
-
-  useEffect(() => {
-    if (!session) return
-
-    // ✅ Connect to same Socket.IO backend
     const socket = io('https://live-session-2.onrender.com')
     socketRef.current = socket
 
     const pc = new RTCPeerConnection()
     pcRef.current = pc
 
-    // ✅ When admin's video arrives
+    // Join session room
+    socket.emit('join-session', unique_id)
+    console.log('👤 Joined session room:', unique_id)
+
+    // Show admin's video when tracks arrive
     pc.ontrack = (event) => {
+      console.log('🎥 Remote stream received from admin')
       videoRef.current.srcObject = event.streams[0]
     }
 
-    // ✅ Handle offer from admin
+    // Handle offer from admin
     socket.on('offer', async (offer) => {
-      await pc.setRemoteDescription(new RTCSessionDescription(offer))
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
-      socket.emit('answer', answer)
+      console.log('📩 Offer received from admin')
+      try {
+        await pc.setRemoteDescription(offer)
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        socket.emit('answer', { answer, room: unique_id })
+        console.log('📤 Answer sent to admin')
+      } catch (err) {
+        console.error('Offer handling error:', err)
+      }
     })
 
-    // ✅ Handle ICE candidates
+    // Handle ICE candidate from admin
     socket.on('candidate', async (candidate) => {
-      if (candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate))
+      try {
+        if (candidate) await pc.addIceCandidate(candidate)
+      } catch (err) {
+        console.error('addIceCandidate error:', err)
+      }
     })
 
+    // Send ICE candidates to admin
     pc.onicecandidate = (event) => {
-      if (event.candidate) socket.emit('candidate', event.candidate)
+      if (event.candidate)
+        socket.emit('candidate', {
+          candidate: event.candidate,
+          room: unique_id,
+        })
     }
 
     return () => {
-      socket.disconnect()
       pc.close()
+      socket.disconnect()
     }
-  }, [session])
-
-  if (notFound)
-    return (
-      <div className='text-center text-red-500 mt-10'>Session not found.</div>
-    )
-
-  if (!session) return <h2 className='text-center mt-20 text-xl'>Loading...</h2>
+  }, [unique_id])
 
   return (
     <div className='p-10 text-center'>

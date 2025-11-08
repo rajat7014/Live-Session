@@ -10,31 +10,35 @@ app.prepare().then(() => {
   const server = createServer((req, res) => handle(req, res))
 
   const io = new Server(server, {
-    cors: {
-      origin: '*',
-    },
+    cors: { origin: '*' },
   })
 
   io.on('connection', (socket) => {
-    console.log('🟢 New client connected')
+    console.log('🟢 New client connected:', socket.id)
 
-    socket.on('offer', (offer) => {
-      console.log('📡 Offer received from admin')
-      socket.broadcast.emit('offer', offer)
+    // Join session room
+    socket.on('join-session', (unique_id) => {
+      socket.join(unique_id)
+      console.log(`👤 Socket ${socket.id} joined room: ${unique_id}`)
+
+      // Notify admin that a student joined
+      socket.to(unique_id).emit('student-joined', socket.id)
     })
 
-    socket.on('answer', (answer) => {
-      console.log('✅ Answer received from student')
-      socket.broadcast.emit('answer', answer)
-    })
+    // Forward offer/answer/candidate to room
+    socket.on('offer', ({ offer, room }) =>
+      socket.to(room).emit('offer', offer)
+    )
+    socket.on('answer', ({ answer, room }) =>
+      socket.to(room).emit('answer', answer)
+    )
+    socket.on('candidate', ({ candidate, room }) =>
+      socket.to(room).emit('candidate', candidate)
+    )
 
-    socket.on('candidate', (candidate) => {
-      socket.broadcast.emit('candidate', candidate)
-    })
-
-    socket.on('disconnect', () => {
-      console.log('🔴 Client disconnected')
-    })
+    socket.on('disconnect', () =>
+      console.log('🔴 Client disconnected:', socket.id)
+    )
   })
 
   const port = process.env.PORT || 1000
