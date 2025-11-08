@@ -232,7 +232,7 @@ export default function LiveSession(props) {
   }, [unique_id])
   useEffect(() => {
     // Connect to Socket.IO backend
-    socketRef.current = io('http://localhost:3000')
+    socketRef.current = io('https://live-session-2.onrender.com/')
 
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
