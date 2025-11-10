@@ -176,33 +176,55 @@ export default function StudentSessionPage() {
     }
 
     console.log('👤 Joined session room:', unique_id)
-    const socket = io('http://localhost:1000', { forceNew: true })
+
+    // fresh socket instance and force websocket transport
+    const socket = io('http://localhost:1000', {
+      forceNew: true,
+      transports: ['websocket'],
+    })
     socketRef.current = socket
 
-    socket.emit('join-session', unique_id)
+    // debug all incoming events
     socket.onAny((event, ...args) =>
       console.log('📡 Socket Event:', event, args)
     )
 
-    const pc = new RTCPeerConnection()
+    socket.on('connect', () => {
+      console.log('🟢 Student connected to signaling server:', socket.id)
+      socket.emit('join-session', unique_id)
+      // let server know student is ready to receive any stored offer
+      socket.emit('student-ready', unique_id)
+    })
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    })
     pcRef.current = pc
 
     pc.ontrack = (event) => {
-      console.log('📺 Remote stream received by student')
-      videoRef.current.srcObject = event.streams[0]
+      console.log(
+        '📺 Remote stream received by student, streams:',
+        event.streams
+      )
+      if (videoRef.current) videoRef.current.srcObject = event.streams[0]
     }
 
-    // Receive Offer
+    // when student receives an offer
     socket.on('offer', async (offer) => {
-      console.log('📩 Offer received from admin')
-      await pc.setRemoteDescription(new RTCSessionDescription(offer))
-      const answer = await pc.createAnswer()
-      await pc.setLocalDescription(answer)
-      socket.emit('answer', { answer, room: unique_id })
-      console.log('📤 Answer sent to admin')
+      try {
+        console.log('📩 Offer received from admin')
+        await pc.setRemoteDescription(new RTCSessionDescription(offer))
+        const answer = await pc.createAnswer()
+        await pc.setLocalDescription(answer)
+        // send back the student's answer (use pc.localDescription)
+        socket.emit('answer', { answer: pc.localDescription, room: unique_id })
+        console.log('📤 Answer sent to admin')
+      } catch (err) {
+        console.error('Error handling offer on student:', err)
+      }
     })
 
-    // Send ICE candidates
+    // send student ICE candidates to server
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socket.emit('candidate', {
@@ -212,14 +234,13 @@ export default function StudentSessionPage() {
       }
     }
 
-    // Receive ICE candidates
+    // receive candidate from admin
     socket.on('candidate', async ({ candidate }) => {
-      if (candidate) {
-        try {
-          await pc.addIceCandidate(new RTCIceCandidate(candidate))
-        } catch (err) {
-          console.error('❌ Error adding ICE candidate:', err)
-        }
+      if (!candidate) return
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate))
+      } catch (err) {
+        console.error('❌ Error adding ICE candidate (student):', err)
       }
     })
 
@@ -237,6 +258,7 @@ export default function StudentSessionPage() {
           ref={videoRef}
           autoPlay
           playsInline
+          controls
           className='w-[640px] h-[480px] bg-black rounded-lg'
         />
       </div>

@@ -1,3 +1,4 @@
+// server.js
 import { Server } from 'socket.io'
 import http from 'http'
 import express from 'express'
@@ -7,13 +8,15 @@ const server = http.createServer(app)
 
 const io = new Server(server, {
   cors: {
-    origin: '*',
+    origin: ['http://localhost:3000'],
     methods: ['GET', 'POST'],
     credentials: true,
   },
 })
 
-// ✅ Socket server logic
+// store last offer per room so late-joining students can get it
+const activeOffers = {}
+
 io.on('connection', (socket) => {
   console.log('✅ A user connected:', socket.id)
 
@@ -24,18 +27,34 @@ io.on('connection', (socket) => {
 
   socket.on('offer', ({ offer, room }) => {
     console.log(`📤 Offer received from admin for room: ${room}`)
+    activeOffers[room] = offer // save it for late joins
     const clients = io.sockets.adapter.rooms.get(room)
     console.log('👥 Students currently in room:', clients ? clients.size : 0)
-    socket.to(room).emit('offer', offer)
+    // send to other clients in the room (not the sender)
+    socket.broadcast.to(room).emit('offer', offer)
+  })
+
+  // student says they are ready; resend stored offer if present
+  socket.on('student-ready', (room) => {
+    console.log('🧑‍🎓 Student ready in room:', room)
+    if (activeOffers[room]) {
+      console.log('📤 Re-sending stored offer to ready student')
+      socket.emit('offer', activeOffers[room])
+    }
   })
 
   socket.on('answer', ({ answer, room }) => {
     console.log('📩 Answer received -> sending to admin')
-    socket.to(room).emit('answer', answer)
+    socket.broadcast.to(room).emit('answer', answer)
   })
 
   socket.on('candidate', ({ candidate, room }) => {
-    socket.to(room).emit('candidate', { candidate })
+    socket.broadcast.to(room).emit('candidate', { candidate })
+  })
+
+  socket.onAny((event, ...args) => {
+    // helpful debug: logs all events the server receives
+    console.log('🔷 server event:', event, args)
   })
 
   socket.on('disconnect', () => {
