@@ -1,48 +1,48 @@
-import next from 'next'
-import { createServer } from 'http'
 import { Server } from 'socket.io'
+import http from 'http'
+import express from 'express'
 
-const dev = process.env.NODE_ENV !== 'production'
-const app = next({ dev })
-const handle = app.getRequestHandler()
+const app = express()
+const server = http.createServer(app)
 
-app.prepare().then(() => {
-  const server = createServer((req, res) => handle(req, res))
-
-  const io = new Server(server, {
-    cors: { origin: '*' },
-  })
-
-  io.on('connection', (socket) => {
-    console.log('🟢 New client connected:', socket.id)
-
-    // Join session room
-    socket.on('join-session', (unique_id) => {
-      socket.join(unique_id)
-      console.log(`👤 Socket ${socket.id} joined room: ${unique_id}`)
-
-      // Notify admin that a student joined
-      socket.to(unique_id).emit('student-joined', socket.id)
-    })
-
-    // Forward offer/answer/candidate to room
-    socket.on('offer', ({ offer, room }) =>
-      socket.to(room).emit('offer', offer)
-    )
-    socket.on('answer', ({ answer, room }) =>
-      socket.to(room).emit('answer', answer)
-    )
-    socket.on('candidate', ({ candidate, room }) =>
-      socket.to(room).emit('candidate', candidate)
-    )
-
-    socket.on('disconnect', () =>
-      console.log('🔴 Client disconnected:', socket.id)
-    )
-  })
-
-  const port = process.env.PORT || 1000
-  server.listen(port, () =>
-    console.log(`✅ Server running on http://localhost:${port}`)
-  )
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+    credentials: true,
+  },
 })
+
+// ✅ Socket server logic
+io.on('connection', (socket) => {
+  console.log('✅ A user connected:', socket.id)
+
+  socket.on('join-session', (room) => {
+    socket.join(room)
+    console.log('👥 User joined room:', room)
+  })
+
+  socket.on('offer', ({ offer, room }) => {
+    console.log(`📤 Offer received from admin for room: ${room}`)
+    const clients = io.sockets.adapter.rooms.get(room)
+    console.log('👥 Students currently in room:', clients ? clients.size : 0)
+    socket.to(room).emit('offer', offer)
+  })
+
+  socket.on('answer', ({ answer, room }) => {
+    console.log('📩 Answer received -> sending to admin')
+    socket.to(room).emit('answer', answer)
+  })
+
+  socket.on('candidate', ({ candidate, room }) => {
+    socket.to(room).emit('candidate', { candidate })
+  })
+
+  socket.on('disconnect', () => {
+    console.log('❌ A user disconnected:', socket.id)
+  })
+})
+
+server.listen(1000, () =>
+  console.log('🚀 Socket.io server running on port 1000')
+)
